@@ -1,8 +1,11 @@
-/* This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details. */
+
 #include <ESP8266WiFi.h>
+#include <SparkFun_SCD30_Arduino_Library.h>
+#include <Wire.h>
+#include <Adafruit_NeoPixel.h>
+int CO2 = 0 ; //Co2-Wert
+
+SCD30 airSensorSCD30; // Objekt SDC30 Umweltsensor
 
 String matrixausgabe_text  = " "; // Ausgabetext als globale Variable
 
@@ -34,11 +37,29 @@ int httpGET(String host, String cmd, String &antwort,int Port) {
   if (!ok) Serial.print(" no connection"); // Fehlermeldung
   return ok;
 }
-int CO2=25;
-
 
 void setup(){ // Einmalige Initialisierung
+  Wire.begin(); // ---- Initialisiere den I2C-Bus 
+ 
   Serial.begin(115200);
+  Serial.println();
+  Wire.setClock(100000L);            // 100 kHz SCD30 
+  Wire.setClockStretchLimit(200000L);// CO2-SCD30
+  
+  if (Wire.status() != I2C_OK) Serial.println("Fehler auf dem I2C-Bus");
+
+  if (airSensorSCD30.begin() == false) {
+    Serial.println("SCD30-Sensor Verbindung fehlerhaft, bitte prüfen"); 
+  }
+
+  airSensorSCD30.setAutoSelfCalibration(false); // Sensirion no auto calibration
+
+  airSensorSCD30.setMeasurementInterval(2);     // CO2-Messung alle 2 s
+
+
+
+
+  
   //------------ WLAN initialisieren 
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
@@ -58,6 +79,9 @@ void setup(){ // Einmalige Initialisierung
 }
 
 void loop() { // Kontinuierliche Wiederholung 
+  CO2 = airSensorSCD30.getCO2() ;
+  Serial.print("CO2:"+String(String(CO2)));
+  Serial.println();
 
   { //Block------------------------------ sende Daten an Thingspeak (mit http GET) 
     Serial.println("\nThingspeak update ");
@@ -67,4 +91,6 @@ void loop() { // Kontinuierliche Wiederholung
     cmd = cmd +String("&field1="+String(CO2))+ "\n\r";
     httpGET(host,cmd,antwort,80);// und absenden 
   } // Blockende
+ 
+  delay( 2000 );
 }
