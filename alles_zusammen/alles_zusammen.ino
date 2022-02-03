@@ -891,7 +891,7 @@ leds[255] = CRGB(255, 0, 0);
 
 }
 void to_high(){
-  leds[0] = CRGB(0, 0, 0);
+leds[0] = CRGB(0, 0, 0);
 leds[1] = CRGB(255, 0, 0);
 leds[2] = CRGB(255, 0, 0);
 leds[3] = CRGB(255, 0, 0);
