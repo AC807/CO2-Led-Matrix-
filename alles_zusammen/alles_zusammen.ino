@@ -1,21 +1,18 @@
 #include "FastLED.h"
-#define NUM_LEDS 256
+#define NUM_LEDS 256 //anzahl der LEDs (16x16)
 #include <ESP8266WiFi.h>
 #include <SparkFun_SCD30_Arduino_Library.h>
 #include <Wire.h>
 #include <Adafruit_NeoPixel.h>
 CRGB leds[NUM_LEDS];
 int CO2 = 0 ; //Co2-Wert
-int w1xx = 0;
-int wx1x = 0;
-int wxx1 = 0;
+int alt_CO2 = 0; //alter Co2-Wert
+int w1xx = 0;   //100er Stelle
+int wx1x = 0;   //10er Stelle
+int wxx1 = 0;   //1er Stelle
+int CO2diff = -1; //CO2 Differenz (CO2-alt_CO2)
 
 SCD30 airSensorSCD30; // Objekt SDC30 Umweltsensor
-
-String matrixausgabe_text  = " "; // Ausgabetext als globale Variable
-
-volatile int matrixausgabe_index = 0;// aktuelle Position in Matrix
-
 IPAddress myOwnIP; // ownIP for mDNS 
 
 //--------------------------------------- HTTP-Get
@@ -46,7 +43,7 @@ int httpGET(String host, String cmd, String &antwort,int Port) {
 void setup(){ // Einmalige Initialisierung
   Wire.begin(); // ---- Initialisiere den I2C-Bus 
  
-  Serial.begin(115200);
+  Serial.begin(115200);  
   Serial.println();
   Wire.setClock(100000L);            // 100 kHz SCD30 
   Wire.setClockStretchLimit(200000L);// CO2-SCD30
@@ -74,20 +71,18 @@ void setup(){ // Einmalige Initialisierung
   WiFi.begin("Gastzugang","31155182573812659566");
   while (WiFi.status() != WL_CONNECTED) { // Warte bis Verbindung steht 
     delay(500); 
-    Serial.print(".");
+    Serial.print(".");    //Lade Punkte ausgeben
   };
-  Serial.println ("\nconnected, meine IP:"+ WiFi.localIP().toString());
-  matrixausgabe_text = " Meine IP:" + WiFi.localIP().toString();
+  Serial.println ("\nconnected, meine IP:"+ WiFi.localIP().toString()); //IP addresse ausgeben
   myOwnIP = WiFi.localIP();
-  matrixausgabe_index=0;
-
-FastLED.addLeds<NEOPIXEL,13>(leds, NUM_LEDS); 
+  
+FastLED.addLeds<NEOPIXEL,13>(leds, NUM_LEDS); //LEDs hinzufügen
 }
 
 void loop() { // Kontinuierliche Wiederholung 
-  CO2 = airSensorSCD30.getCO2() ;
-  Serial.print("CO2:"+String(String(CO2)));
-  Serial.println();
+  CO2 = airSensorSCD30.getCO2() ;  //CO2 Wert in CO2 schriben
+  Serial.print("CO2:"+String(String(CO2))); //CO2 ausgeben
+  Serial.println();     //lehrzeile 
 
   { //Block------------------------------ sende Daten an Thingspeak (mit http GET) 
     Serial.println("\nThingspeak update ");
@@ -97,9 +92,11 @@ void loop() { // Kontinuierliche Wiederholung
     cmd = cmd +String("&field1="+String(CO2))+ "\n\r";
     httpGET(host,cmd,antwort,80);// und absenden 
   } // Blockende
- CO2_Zerlegen ();
-empty();
- if (w1xx == 1) v1xx();
+ 
+CO2_Zerlegen ();    //schleife um CO2 in Ziffern zu zerlegen
+empty();      //alle LEDs aus
+//Zahl anzeigen:
+if (w1xx == 1) v1xx();
 if (w1xx == 2) v2xx();
 if (w1xx == 3) v3xx();
 if (w1xx == 4) v4xx();
@@ -131,13 +128,18 @@ if (wxx1 == 7) vxx7();
 if (wxx1 == 8) vxx8();
 if (wxx1 == 9) vxx9();
 if (wxx1 == 0) vxx0();
-farbeermitteln();
-FastLED.show();
-Serial.println(w1xx);
-Serial.println(wx1x);
-Serial.println(wxx1);
-delay( 2000 );
 
+Pfeil(); //Schleife um Trend-Pfeil anzuzeigen
+farbeermitteln();   //Schleife um Farbigen Rahmen anzuzeigen
+FastLED.show();     //Daten zur Matrix schicken 
+Serial.println("CO2 1xx:"+String(String(w1xx)));
+Serial.println("CO2 x1x:"+String(String(wx1x)));
+Serial.println("CO2 xx1:"+String(String(wxx1)));
+Serial.println("CO2 -alt_CO2:"+String(String(CO2diff)));
+Serial.println("alt_CO2 :"+String(String(alt_CO2)));
+alt_CO2 = CO2;   // CO2 in alt_CO2 speichern 
+delay( 2000 );    //2 sec Warten bis neuer durchlauf
+Serial.println("neuer durchlauf");
 }
 
 void CO2_Zerlegen (){
@@ -146,24 +148,57 @@ wx1x = (CO2-w1xx*100)/10;
 wxx1 = (CO2-w1xx*100)-wx1x*10;
 }
 
+void Pfeil() {
+CO2diff = CO2 - alt_CO2;   //CO2 Differenz berechnen
+  if (( ( CO2diff ) > ( 8 ) ))    //ist die CO2diff größer als 8?
+  {
+    pf_steigend();
+    Serial.println("steigender CO2 Wert");
+    }
+   else
+     if (( ( CO2diff ) > ( 3 ) && ( CO2diff )< ( 9 ) ))     //ist die CO2diff zwichen als 4 und 8?
+  {
+    pf_leicht_steigend();
+    Serial.println("leicht steigender CO2 Wert");
+    }
+   else
+     if (( ( CO2diff ) < ( 4 ) && ( CO2diff )> ( -4 ) ))     //ist die CO2diff zwichen als 3 und -3?   
+  {
+    pf_gleich();
+    Serial.println("Konstanter CO2 Wert");
+    }
+  else
+     if (( ( CO2diff ) < ( -3 ) && ( CO2diff )> ( -9 ) ))     //ist die CO2diff zwichen als -4 und -8?
+  {
+  pf_leicht_sinkend();
+  Serial.println("leicht sinkender CO2 Wert");
+  }
+  else
+  if (( ( CO2diff ) < ( -8 ) ))     //ist die CO2diff kleiner als -8?
+  {
+  pf_sinkend();
+  Serial.println("sinkender CO2 Wert");
+    }
+  }
+
 void farbeermitteln()
 {
-  if (( ( CO2 ) < ( 600 ) ))
+  if (( ( CO2 ) < ( 600 ) ))     //ist CO2 kleiner als 600?
   {
     Serial.print("green");
     Serial.println();
     vGruen_Rahmen ();
 
   }
-  else
+  else    //wenn nicht
   {
-    if (( ( CO2 ) < ( 1000 ) ))
+    if (( ( CO2 ) < ( 1000 ) ))     //ist CO2 kleiner als 1000?
     {
       Serial.print("yellow");
       Serial.println();
       vGelb_Rahmen ();
     }
-    else
+    else    //wenn nicht
     {
       Serial.print("red");
       Serial.println();
@@ -173,7 +208,7 @@ void farbeermitteln()
 }
 
 
-
+                                //alle Schleifen um etwas anzuzeigen
 void vxx1(){
 leds[29] = CRGB(255, 255, 255);
 leds[30] = CRGB(255, 255, 255);
@@ -498,7 +533,6 @@ leds[118] = CRGB(255, 255, 255);
 leds[119] = CRGB(255, 255, 255);
 leds[120] = CRGB(255, 255, 255);
 leds[121] = CRGB(255, 255, 255);
-
 }
 void vx0x(){
 leds[22] = CRGB(255, 255, 255);
@@ -519,7 +553,6 @@ leds[118] = CRGB(255, 255, 255);
 leds[119] = CRGB(255, 255, 255);
 leds[120] = CRGB(255, 255, 255);
 leds[121] = CRGB(255, 255, 255);
-
 }
 
 
@@ -534,7 +567,6 @@ leds[68] = CRGB(255, 255, 255);
 leds[84] = CRGB(255, 255, 255);
 leds[100] = CRGB(255, 255, 255);
 leds[116] = CRGB(255, 255, 255);
-  
 }
 void v2xx(){
 leds[18] = CRGB(255, 255, 255);
@@ -1147,7 +1179,8 @@ leds[254] = CRGB(255, 0, 0);
 leds[255] = CRGB(255, 0, 0);
 FastLED.show();
   }
-  void empty(){
+  void empty()
+  {
 leds[0] = CRGB(0, 0, 0);
 leds[1] = CRGB(0, 0, 0);
 leds[2] = CRGB(0, 0, 0);
@@ -1404,4 +1437,76 @@ leds[252] = CRGB(0, 0, 0);
 leds[253] = CRGB(0, 0, 0);
 leds[254] = CRGB(0, 0, 0);
 leds[255] = CRGB(0, 0, 0);
+    }
+          void pf_gleich(){
+leds[154] = CRGB(255, 255, 255);
+leds[171] = CRGB(255, 255, 255);
+leds[180] = CRGB(255, 255, 255);
+leds[181] = CRGB(255, 255, 255);
+leds[182] = CRGB(255, 255, 255);
+leds[183] = CRGB(255, 255, 255);
+leds[184] = CRGB(255, 255, 255);
+leds[185] = CRGB(255, 255, 255);
+leds[186] = CRGB(255, 255, 255);
+leds[187] = CRGB(255, 255, 255);
+leds[188] = CRGB(255, 255, 255);
+leds[203] = CRGB(255, 255, 255);
+leds[218] = CRGB(255, 255, 255);
+      }
+
+      void pf_leicht_steigend(){ 
+leds[150] = CRGB(255, 255, 0);
+leds[151] = CRGB(255, 255, 0);
+leds[152] = CRGB(255, 255, 0);
+leds[153] = CRGB(255, 255, 0);
+leds[168] = CRGB(255, 255, 0);
+leds[169] = CRGB(255, 255, 0);
+leds[182] = CRGB(255, 255, 0);
+leds[183] = CRGB(255, 255, 0);
+leds[184] = CRGB(255, 255, 0);
+leds[195] = CRGB(255, 255, 0);
+leds[196] = CRGB(255, 255, 0);
+leds[197] = CRGB(255, 255, 0);
+leds[2010] = CRGB(255, 255, 0);
+        }
+      
+      void pf_leicht_sinkend(){ 
+leds[179] = CRGB(80, 255, 0);
+leds[180] = CRGB(80, 255, 0);
+leds[181] = CRGB(80, 255, 0);
+leds[185] = CRGB(80, 255, 0);
+leds[198] = CRGB(80, 255, 0);
+leds[199] = CRGB(80, 255, 0);
+leds[201] = CRGB(80, 255, 0);
+leds[216] = CRGB(80, 255, 0);
+leds[217] = CRGB(80, 255, 0);
+leds[230] = CRGB(80, 255, 0);
+leds[231] = CRGB(80, 255, 0);
+leds[232] = CRGB(80, 255, 0);
+leds[233] = CRGB(80, 255, 0);
+      }
+
+    void pf_steigend(){ 
+leds[151] = CRGB(255, 0, 0);
+leds[166] = CRGB(255, 0, 0);
+leds[167] = CRGB(255, 0, 0);
+leds[168] = CRGB(255, 0, 0);
+leds[181] = CRGB(255, 0, 0);
+leds[183] = CRGB(255, 0, 0);
+leds[185] = CRGB(255, 0, 0);
+leds[199] = CRGB(255, 0, 0);
+leds[215] = CRGB(255, 0, 0);
+leds[231] = CRGB(255, 0, 0);
+    }
+    void pf_sinkend(){ 
+leds[151] = CRGB( 0, 255, 0);
+leds[167] = CRGB( 0, 255, 0);
+leds[183] = CRGB( 0, 255, 0);
+leds[197] = CRGB( 0, 255, 0);
+leds[199] = CRGB( 0, 255, 0);
+leds[201] = CRGB( 0, 255, 0);
+leds[214] = CRGB( 0, 255, 0);
+leds[215] = CRGB( 0, 255, 0);
+leds[216] = CRGB( 0, 255, 0);
+leds[231] = CRGB( 0, 255, 0);
     }

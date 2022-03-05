@@ -1,0 +1,11 @@
+
+leds[151] = CRGB(255, 0, 0);
+leds[167] = CRGB(255, 0, 0);
+leds[183] = CRGB(255, 0, 0);
+leds[197] = CRGB(255, 0, 0);
+leds[199] = CRGB(255, 0, 0);
+leds[201] = CRGB(255, 0, 0);
+leds[214] = CRGB(255, 0, 0);
+leds[215] = CRGB(255, 0, 0);
+leds[216] = CRGB(255, 0, 0);
+leds[231] = CRGB(255, 0, 0);
